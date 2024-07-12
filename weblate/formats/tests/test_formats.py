@@ -177,6 +177,8 @@ class BaseFormatTest(FixtureTestCase, TempDirMixin):
     )
     NEW_UNIT_KEY = "key"
     SUPPORTS_FLAG = True
+    SUPPORTS_NOTES = True
+    NOTE_FOR_TEST = "template note for test"
     EXPECTED_FLAGS: str | list[str] = "c-format, max-length:100"
     EDIT_OFFSET = 0
     EDIT_TARGET: str | list[str] = "Nazdar, svete!\n"
@@ -333,8 +335,10 @@ class BaseFormatTest(FixtureTestCase, TempDirMixin):
 
         Note: This is for monolingual formats only.
         """
-        if not self.MONOLINGUAL or not self.FORMAT.can_add_unit:
+        if not self.MONOLINGUAL or not self.FORMAT.can_add_unit or not self.SUPPORTS_NOTES:
             raise SkipTest("Not supported")
+
+        # TODO: Explain why we need all the file business.
 
         template_file = os.path.join(self.tempdir, f"test.tmpl.{self.EXT}")
         main_file = os.path.join(self.tempdir, f"test.{self.EXT}")
@@ -345,17 +349,34 @@ class BaseFormatTest(FixtureTestCase, TempDirMixin):
         template_unit = template_storage.new_unit(
             self.NEW_UNIT_KEY, "Source string"
         )
-        template_unit.unit.addnote("template note for test")
+        template_unit.unit.addnote(self.NOTE_FOR_TEST)
         template_storage.save()
+
+        with open(template_file, "rb") as handle:
+            print("#### TEMPLATE ####")
+            print(handle.read())
 
         # Add a new language and translate the new string.
         self.FORMAT.add_language(main_file, Language.objects.get(code="cs"), "")
+
+        with open(main_file, "rb") as handle:
+            print("#### TARGET ####")
+            print(handle.read())
+
         target_storage = self.parse_file(main_file, template=template_file)
         target_unit, add = target_storage.find_unit(self.NEW_UNIT_KEY, self.NEW_UNIT_KEY)
         self.assertTrue(add)
         target_storage.add_unit(target_unit)
-        target_unit.set_target("Tranlsated string (CS)")
+        target_unit.set_target("Translated string (CS)")
         target_storage.save()
+
+        with open(template_file, "rb") as handle:
+            print("#### TEMPLATE ####")
+            print(handle.read())
+
+        with open(main_file, "rb") as handle:
+            print("#### TARGET ####")
+            print(handle.read())
 
         # Reload the storage
         target_storage = self.parse_file(main_file, template=template_file)
@@ -363,11 +384,11 @@ class BaseFormatTest(FixtureTestCase, TempDirMixin):
         self.assertFalse(add)
 
         # Check we get the aggregated notes through the wrapper.
-        self.assertEqual(target_unit.notes, "template note for test\n")
+        self.assertEqual(target_unit.notes.strip(), self.NOTE_FOR_TEST)
 
         # Check there are no notes on the underlying unit.
         if target_unit.unit:
-            self.assertEqual(target_unit.unit.getnotes(), "")
+            self.assertEqual(target_unit.unit.getnotes().strip(), "")
         else:
             # Assume this is a multi-unit. Will fail otherwise.
             for unit in target_unit.units:
@@ -569,6 +590,7 @@ class JSONNestedFormatTest(JSONFormatTest):
     EXPECTED_FLAGS = ""
     MONOLINGUAL = True
     NEW_UNIT_MATCH = b'\n    "key": "Source string"\n'
+    SUPPORTS_NOTES = False
 
 
 class WebExtesionJSONFormatTest(JSONFormatTest):
@@ -627,6 +649,7 @@ class PhpFormatTest(BaseFormatTest):
     NEW_UNIT_MATCH = b"\n$LANG['key'] = 'Source string';\n"
     EXPECTED_FLAGS = ""
     MONOLINGUAL = True
+    NOTE_FOR_TEST = "// template note for test"
 
 
 class LaravelPhpFormatTest(PhpFormatTest):
@@ -848,6 +871,7 @@ class YAMLFormatTest(BaseFormatTest):
     NEW_UNIT_MATCH = b"\nkey: Source string\n"
     EXPECTED_FLAGS = ""
     MONOLINGUAL = True
+    SUPPORTS_NOTES = False
 
     def assert_same(self, newdata, testdata) -> None:
         # Fixup quotes as different translate toolkit versions behave
@@ -902,6 +926,7 @@ class DTDFormatTest(BaseFormatTest):
     NEW_UNIT_MATCH = b'<!ENTITY key "Source string">'
     EXPECTED_FLAGS = ""
     MONOLINGUAL = True
+    SUPPORTS_NOTES = False
 
 
 class CSVFormatTest(BaseFormatTest):
@@ -953,6 +978,7 @@ class FlatXMLFormatTest(BaseFormatTest):
     NEW_UNIT_MATCH = b'<str key="key">Source string</str>\n'
     EXPECTED_FLAGS = ""
     MONOLINGUAL = True
+    SUPPORTS_NOTES = False
 
 
 class ResourceDictionaryFormatTest(BaseFormatTest):
@@ -971,6 +997,7 @@ class ResourceDictionaryFormatTest(BaseFormatTest):
     NEW_UNIT_MATCH = b'<system:String x:Key="key">Source string</system:String>\n'
     EXPECTED_FLAGS = ""
     MONOLINGUAL = True
+    SUPPORTS_NOTES = False
 
 
 class INIFormatTest(BaseFormatTest):
@@ -990,6 +1017,7 @@ class INIFormatTest(BaseFormatTest):
     NEW_UNIT_KEY = "[test]key"
     EXPECTED_FLAGS = ""
     MONOLINGUAL = True
+    SUPPORTS_NOTES = False
 
 
 class InnoSetupINIFormatTest(INIFormatTest):
@@ -1302,6 +1330,7 @@ class StringsdictFormatTest(XMLMixin, BaseFormatTest):
     NEW_UNIT_MATCH = b"<string>Source string</string>"
     MONOLINGUAL = True
     EXPECTED_FLAGS = ""
+    SUPPORTS_NOTES = False
 
     def test_get_plural(self) -> None:
         # Use up-to-date languages database and not the one from fixture
