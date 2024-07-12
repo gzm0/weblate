@@ -336,16 +336,31 @@ class BaseFormatTest(FixtureTestCase, TempDirMixin):
         if not self.MONOLINGUAL or not self.FORMAT.can_add_unit:
             raise SkipTest("Not supported")
 
-        storage = self.parse_file(self.FILE)
+        template_file = os.path.join(self.tempdir, f"test.tmpl.{self.EXT}")
+        main_file = os.path.join(self.tempdir, f"test.{self.EXT}")
 
-        template_unit = storage.template_store.new_unit(
+        # Add a new string with a note to the template file and save it.
+        shutil.copy(self.FILE, template_file)
+        template_storage = self.FORMAT(template_file, is_template=True)
+        template_unit = template_storage.new_unit(
             self.NEW_UNIT_KEY, "Source string"
         )
         template_unit.unit.addnote("template note for test")
+        template_storage.save()
 
-        # find_unit will add the underlying storage unit if it does not exist.
-        target_unit, added = storage.find_unit(self.NEW_UNIT_KEY, self.NEW_UNIT_KEY)
-        self.assertTrue(added)
+        # Add a new language and translate the new string.
+        self.FORMAT.add_language(main_file, Language.objects.get(code="cs"), "")
+        target_storage = self.parse_file(main_file, template=template_file)
+        target_unit, add = target_storage.find_unit(self.NEW_UNIT_KEY, self.NEW_UNIT_KEY)
+        self.assertTrue(add)
+        target_storage.add_unit(target_unit)
+        target_unit.set_target("Tranlsated string (CS)")
+        target_storage.save()
+
+        # Reload the storage
+        target_storage = self.parse_file(main_file, template=template_file)
+        target_unit, add = target_storage.find_unit(self.NEW_UNIT_KEY, self.NEW_UNIT_KEY)
+        self.assertFalse(add)
 
         # Check we get the aggregated notes through the wrapper.
         self.assertEqual(target_unit.notes, "template note for test\n")
